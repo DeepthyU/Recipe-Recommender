@@ -1,5 +1,7 @@
+numpy
 pandas
 tqdm
 requests
 bs4
 lxml
+gensim
