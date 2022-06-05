@@ -4,9 +4,11 @@ Contains functions used for word embeddings.
 """
 import re
 import string
+from pathlib import Path
 from typing import List
 
 import numpy as np
+import pandas as pd
 from gensim.models import KeyedVectors
 
 PUNCTUATION_TABLE = str.maketrans('', '', string.punctuation)
@@ -57,3 +59,29 @@ def calculate_averaged_embedding(ingredient: List[str],
         return np.mean(vectors, axis=0)
     else:
         return None
+
+
+
+
+def embed_canonical_ingredients(data_dir: Path, embedding_path: Path,
+                                model: KeyedVectors):
+    """Gets the embedding of canonical ingredients.
+
+    Args:
+        data_dir: Path to the data directory.
+        embedding_path: Path where the embedding should be saved.
+        model: Model to use to embed.
+    """
+    # Open nutrition csv
+    names = pd.read_csv(data_dir / "nutrition.csv", usecols=['name'])
+
+    # Calculate the vector value of all name strings
+    print("Calculating vector values of all canonical ingredients")
+    keyed_vectors = KeyedVectors(300)
+    for name in names["name"].tolist():
+        vec = calculate_averaged_embedding(WORD_SPLIT.findall(name), model)
+        if vec is not None:
+            keyed_vectors.add_vector(name, vec)
+    keyed_vectors.save(str(embedding_path))
+    print("Named vectors calculated!")
+    return keyed_vectors

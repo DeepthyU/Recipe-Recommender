@@ -2,42 +2,31 @@
 
 Converts all ingredients into their appropriate graph representations.
 """
+from argparse import ArgumentParser
 from pathlib import Path
 from typing import List
 
-from gensim.models import KeyedVectors
 import gensim.downloader as api
 import pandas as pd
-from word_embedding import calculate_averaged_embedding
-from neo4j import GraphDatabase, Driver, Transaction, Session
-import numpy as np
+from gensim.models import KeyedVectors
+from neo4j import GraphDatabase, Driver
+from tqdm import tqdm
+from time import perf_counter
+
+from word_embedding import embed_canonical_ingredients
 
 
-def embed_canonical_ingredients(data_dir: Path, embedding_path: Path,
-                                model: KeyedVectors):
-    """Gets the embedding of canonical ingredients.
+def parse_args():
+    p = ArgumentParser()
+    p.add_argument("DATA_DIR", type=Path,
+                   help="Path to the data directory")
+    p.add_argument("PORT", type=str,
+                   help="Port used to connect to the database")
 
-    Args:
-        data_dir: Path to the data directory.
-        embedding_path: Path where the embedding should be saved.
-        model: Model to use to embed.
-    """
-    # Open nutrition csv
-    names = pd.read_csv(data_dir / "nutrition.csv", usecols=['name'])
-
-    # Calculate the vector value of all name strings
-    print("Calculating vector values of all canonical ingredients")
-    keyed_vectors = KeyedVectors(300)
-    for name in names["name"].tolist():
-        vec = calculate_averaged_embedding(name.split(','), model)
-        if vec is not None:
-            keyed_vectors.add_vector(name, vec)
-    keyed_vectors.save(str(embedding_path))
-    print("Named vectors calculated!")
-    return keyed_vectors
+    return p.parse_args()
 
 
-def add_all_canonical_ingredients(session: Session,
+def add_all_canonical_ingredients(driver: Driver,
                                   embeddings: KeyedVectors):
     """Adds all canonical ingredients to the knowledge graph.
 
@@ -45,32 +34,27 @@ def add_all_canonical_ingredients(session: Session,
         session: The session the transactions should be committed on.
         embeddings: The embeddings of the canonical ingredients
     """
-    # First define the transaction function
-    def create_canonical_ingredient(tx: Transaction, data: dict):
-        """Creates a canonical ingredient entity in the graph database.
-
-        Args:
-            tx: The transaction to write with
-            data: A dictionary containing the node id, name, and embedding.
-        """
-        name = data["name"]
-        node_id = data["id"]
-        embedding = data["embedding"]
-        run_str = f"""MERGE (a:CanonicalIngredient {{name:"{name}"}})
-                      ON CREATE SET a.id = "{node_id}"
-                      ON CREATE SET a.embedding = {embedding}"""
-
-        tx.run(run_str)
-
-    # Now iterate through all ingredients that we have previously embedded
-    for key, index in embeddings.key_to_index.items():
-        data = {"name": key,
-                "id": f"ci_{index:05d}",
-                "embedding": embeddings.get_vector(key)}
-        session.write_transaction(create_canonical_ingredient, data)
+    ingredients = []
+    # Iterate through all ingredients that we have previously embedded
+    for key, index in tqdm(embeddings.key_to_index.items(),
+                           desc="Processing canonical ingredients"):
+        ingredients.append({"name": key.strip(),
+                            "node_id": f"ci_{index:05d}",
+                            "embedding": embeddings.get_vector(key).tolist()})
+    print("Adding canonical ingredients...")
+    start = perf_counter()
+    with driver.session() as session:
+        run_str = """ UNWIND $ingredients as row
+                      MERGE (a:CanonicalIngredient {name: row.name})
+                      ON CREATE SET a.id = row.node_id
+                      ON CREATE SET a.embedding = row.embedding"""
+        session.run(run_str, ingredients=ingredients)
+    t = perf_counter() - start
+    print(f"Done adding canonical ingredients. {t=}")
 
 
-def add_all_ingredient_substitutions(session: Session,
+
+def add_all_ingredient_substitutions(driver: Driver,
                                      substitutions: List[tuple]):
     """Adds all ingredient substitution relationships.
 
@@ -78,20 +62,15 @@ def add_all_ingredient_substitutions(session: Session,
         session: The session the transactions should be committed on.
         substitutions: The proper ingredient substitutions in (from, to) format.
     """
-    # First define the transaction function
-    def create_substitution_relation(tx: Transaction, relation: tuple):
-        """Creates a single ingredient substitution relation."""
-        origin = relation[0]
-        target = relation[1]
-        run_str = f"""MATCH (a:CanonicalIngredient),
-                            (b:CanonicalIngredient)
-                      WHERE a.name = "{origin}" AND b.name = "{target}"
-                      CREATE (a)-[r:HAS_SUBSTITUTE]->(b)"""
-        tx.run(run_str)
-
-    # Now iterate through all ingredient substitution strings
-    for substitution in substitutions:
-        session.write_transaction(create_substitution_relation, substitution)
+    for substitution in tqdm(substitutions, desc="Adding substitutions"):
+        with driver.session() as session:
+            run_str = """MATCH (a:CanonicalIngredient),
+                               (b:CanonicalIngredient)
+                         WHERE a.name = $origin AND b.name = $target
+                         CREATE (a)-[r:HAS_SUBSTITUTE]->(b)"""
+            session.run(run_str,
+                        origin=substitution[0].strip(),
+                        target=substitution[1].strip())
 
 
 def parse_substitutions(substitution_path: Path) -> List[tuple]:
@@ -105,29 +84,39 @@ def parse_substitutions(substitution_path: Path) -> List[tuple]:
     return substitutions
 
 
-def add_all_nutritional_values(session: Session, nutrition_df: pd.DataFrame):
+def add_all_nutritional_values(driver: Driver, nutrition_df: pd.DataFrame):
     """Adds all nutritional values in the nutrition dataframe."""
-    def add_nutrition_entity(tx: Transaction, data: dict):
-        """Adds a given nutritional value as an entity.
+    # Select nutritional values we are interested in
+    nv_names = ["calories", "total_fat", "saturated_fat", "cholesterol",
+                "sodium"]
+    print("Adding nutritional value entities...")
+    for idx, nv_name in enumerate(nv_names):
+        with driver.session() as session:
+            run_str = """MERGE (a:NutritionalValue {name: $name})
+                         ON CREATE SET a.id = $node_id"""
+            session.run(run_str,
+                        name=nv_name.strip(),
+                        node_id=f"nv_{idx:05d}")
 
-        Args:
-            data: A dictionary containing keys [id, name]
-        """
-        node_id = data["id"]
-        name = data["name"]
-        run_str = f"""MERGE (a:NutritionalValue {{name:"{name}"}})
-                      ON CREATE SET a.id = '{node_id}'"""
-        tx.run(run_str)
+    # Then add all ingredient -> nutritional value relations
+    nutrition = nutrition_df.to_dict("records")
+    for record in tqdm(nutrition, desc="Adding ingredient nutritional values"):
+        relations = []
+        for nutrition_name in nv_names:
+            relations.append({"origin": record["name"],
+                              "target": nutrition_name.strip(),
+                              "amount": record[nutrition_name]})
+        with driver.session() as session:
+            run_str = """ UNWIND $relations as row
+                          MATCH (a:CanonicalIngredient),
+                                (b:NutritionalValue)
+                          WHERE a.name = row.origin AND b.name = row.target
+                          CREATE (a)-[r:HAS_NUTRITIONAL_VALUE 
+                                      {amount: row.amount}]->(b) """
+            session.run(run_str, relations=relations)
 
-    nutrition_value_names = nutrition_df.columns[3:]
-    for idx, nutrition_value_name in enumerate(nutrition_value_names):
-        session.write_transaction(add_nutrition_entity,
-                                  {'id': idx, 'name': nutrition_value_name})
 
-
-
-
-def main(data_dir: Path, uri: str, user: str, password:str):
+def main(data_dir: Path, uri: str, user: str, password: str):
     """Adds the provided ingredients and recipes to the graph.
 
     Args:
@@ -143,6 +132,7 @@ def main(data_dir: Path, uri: str, user: str, password:str):
         embed_canonical_ingredients(data_dir, canonical_embed_path, model)
 
     # Collect required data
+    print("Collecting required data...")
     canonical_embeddings = KeyedVectors.load(str(canonical_embed_path))
     substitutions = parse_substitutions(data_dir / "substitutions.csv")
     nutrition_df = pd.read_csv(data_dir / "nutrition.csv")
@@ -150,14 +140,18 @@ def main(data_dir: Path, uri: str, user: str, password:str):
     # Actually commit to the database
     driver = GraphDatabase.driver(uri, auth=(user, password))
 
-    with driver.session as session:
-        add_all_canonical_ingredients(session, canonical_embeddings)
-        add_all_ingredient_substitutions(session, substitutions)
+    print("Starting transactions...")
+    add_all_canonical_ingredients(driver, canonical_embeddings)
+    add_all_ingredient_substitutions(driver, substitutions)
+    add_all_nutritional_values(driver, nutrition_df)
 
-
-
-
+    driver.close()
+    print("Done!")
 
 
 if __name__ == '__main__':
-    main(Path("data/"))
+    args = parse_args()
+    uri = f"bolt://localhost:{args.PORT}"
+    user = "neo4j"
+    password = "password"
+    main(args.DATA_DIR, uri, user, password)
