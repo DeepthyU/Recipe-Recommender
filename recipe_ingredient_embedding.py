@@ -1,7 +1,6 @@
-"""Ingredient Canonization.
+"""Recipe Ingredient Embedding.
 
-Figures out mappings of ingredients to canonical ingredient names for all
-ingredients which appear in the recipes we scraped.
+Figures out the embeddings for every ingredient that appears in the recipes.
 """
 from typing import Tuple, List
 import re
@@ -147,7 +146,7 @@ def main(data_dir: Path):
 
     # For each recipe file
     for recipe_file in recipe_files:
-        # Read the file
+        # Read the file and calculate the ingredient embeddings
         df = pd.read_pickle(recipe_file)
         df["ingredients"] = df["ingredients"]\
             .apply(lambda row: embed_ingredient_list(row, model))

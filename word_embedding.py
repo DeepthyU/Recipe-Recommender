@@ -2,6 +2,7 @@
 
 Contains functions used for word embeddings.
 """
+import re
 import string
 from typing import List
 
@@ -9,6 +10,7 @@ import numpy as np
 from gensim.models import KeyedVectors
 
 PUNCTUATION_TABLE = str.maketrans('', '', string.punctuation)
+WORD_SPLIT = re.compile(r"\w+")
 
 
 def embed_ingredient_string(ingredient_str: str,
@@ -20,10 +22,9 @@ def embed_ingredient_string(ingredient_str: str,
         model: The model with which to calculate the embedding.
     """
     # First split ingredient into a list of words, without punctuation
-    ing_list = ingredient_str.translate(PUNCTUATION_TABLE).split(' ')
+    ing_list = WORD_SPLIT.findall(ingredient_str.translate(PUNCTUATION_TABLE))
     # Calculate its average embedding
-    embedding = calculate_averaged_embedding(ing_list, model)
-    return embedding or None
+    return calculate_averaged_embedding(ing_list, model)
 
 
 def calculate_averaged_embedding(ingredient: List[str],
