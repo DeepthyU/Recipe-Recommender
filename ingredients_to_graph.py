@@ -87,25 +87,32 @@ def parse_substitutions(substitution_path: Path) -> List[tuple]:
 def add_all_nutritional_values(driver: Driver, nutrition_df: pd.DataFrame):
     """Adds all nutritional values in the nutrition dataframe."""
     # Select nutritional values we are interested in
-    nv_names = ["calories", "total_fat", "saturated_fat", "cholesterol",
-                "sodium"]
+    nv_name_map = {"calories": "Calories",
+                   "total_fat": "Total Fat",
+                   "saturated_fat": "Saturated Fat",
+                   "carbohydrate": "Carbohydrates",
+                   "sugars": "Sugars",
+                   "fiber": "Fiber",
+                   "protein": "Protein",
+                   "sodium": "Sodium"}
+
     print("Adding nutritional value entities...")
-    for idx, nv_name in enumerate(nv_names):
+    for idx, (key, value) in enumerate(nv_name_map.items()):
         with driver.session() as session:
             run_str = """MERGE (a:NutritionalValue {name: $name})
                          ON CREATE SET a.id = $node_id"""
             session.run(run_str,
-                        name=nv_name.strip(),
+                        name=value.strip(),
                         node_id=f"nv_{idx:05d}")
 
     # Then add all ingredient -> nutritional value relations
     nutrition = nutrition_df.to_dict("records")
     for record in tqdm(nutrition, desc="Adding ingredient nutritional values"):
         relations = []
-        for nutrition_name in nv_names:
+        for key, value in nv_name_map.items():
             relations.append({"origin": record["name"],
-                              "target": nutrition_name.strip(),
-                              "amount": record[nutrition_name]})
+                              "target": value.strip(),
+                              "amount": record[key]})
         with driver.session() as session:
             run_str = """ UNWIND $relations as row
                           MATCH (a:CanonicalIngredient),
