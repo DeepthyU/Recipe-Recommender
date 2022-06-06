@@ -61,8 +61,6 @@ def calculate_averaged_embedding(ingredient: List[str],
         return None
 
 
-
-
 def embed_canonical_ingredients(data_dir: Path, embedding_path: Path,
                                 model: KeyedVectors):
     """Gets the embedding of canonical ingredients.
