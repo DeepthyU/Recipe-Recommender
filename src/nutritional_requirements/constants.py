@@ -1,5 +1,3 @@
-
-
 SEX_FEMALE = 0
 SEX_MALE = 1
 ACTIVITY_LEVEL_INACTIVE = "inactive"

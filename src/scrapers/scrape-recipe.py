@@ -28,7 +28,7 @@ def get_recipe_urls():
 
 if __name__ == '__main__':
     """Scrapes recipes from The Student Food Project."""
-    output_file = Path('../data/studentfoodrecipe.pkl')
+    output_file = Path('../../data/studentfoodrecipe.pkl')
     recipe_urls = get_recipe_urls()
 
     headerList = ['name', 'description', 'nutrition_name', 'nutrition_value',

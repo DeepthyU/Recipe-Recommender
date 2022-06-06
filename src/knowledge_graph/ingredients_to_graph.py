@@ -13,7 +13,7 @@ from neo4j import GraphDatabase, Driver
 from tqdm import tqdm
 from time import perf_counter
 
-from word_embedding import embed_canonical_ingredients
+from preprocessing.word_embedding import embed_canonical_ingredients
 
 
 def parse_args():

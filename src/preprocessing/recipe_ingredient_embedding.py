@@ -9,7 +9,7 @@ from argparse import ArgumentParser
 import pandas as pd
 from gensim.models import KeyedVectors
 import gensim.downloader as api
-from word_embedding import embed_ingredient_string
+from preprocessing.word_embedding import embed_ingredient_string
 
 
 def parse_args():

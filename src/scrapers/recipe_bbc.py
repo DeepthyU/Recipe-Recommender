@@ -127,7 +127,7 @@ def main():
 
     links = []
 
-    links_file = Path("../data/bbc_recipe_urls.txt")
+    links_file = Path("../../data/bbc_recipe_urls.txt")
     if links_file.exists():
         print("Links file exists. Using prefetched links.")
         with open(links_file) as f:
@@ -155,7 +155,7 @@ def main():
 
     data_df = pd.DataFrame(data)
     print(f"Collected {len(data_df)} recipes")
-    data_df.to_pickle(str(Path("../data/recipe_bbc.pkl")))
+    data_df.to_pickle(str(Path("../../data/recipe_bbc.pkl")))
 
 
 if __name__ == '__main__':
