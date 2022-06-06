@@ -106,7 +106,7 @@ def parse_one_article(currenturl, link):
     return 0, None
 
 
-def main():
+def scrape_from_bbc(data_dir: Path):
     data = {"name": [],
             "description": [],
             "nutrition_name": [],
@@ -122,12 +122,12 @@ def main():
     #     write = csv.writer(f, dialect='excel', delimiter=";")
     #     write.writerow(names)
 
-    urls = [f"https://www.bbcgoodfood.com/search/recipes/page/" \
+    urls = [f"https://www.bbcgoodfood.com/search/recipes/page/"
             f"{number}/?q=recipes&sort=-popular" for number in range(1, 81)]
 
     links = []
 
-    links_file = Path("../../data/bbc_recipe_urls.txt")
+    links_file = data_dir / "bbc_recipe_urls.txt"
     if links_file.exists():
         print("Links file exists. Using prefetched links.")
         with open(links_file) as f:
@@ -155,8 +155,8 @@ def main():
 
     data_df = pd.DataFrame(data)
     print(f"Collected {len(data_df)} recipes")
-    data_df.to_pickle(str(Path("../../data/recipe_bbc.pkl")))
+    data_df.to_pickle(str(data_dir / "recipe_bbc.pkl"))
 
 
 if __name__ == '__main__':
-    main()
+    scrape_from_bbc(Path('../data/'))

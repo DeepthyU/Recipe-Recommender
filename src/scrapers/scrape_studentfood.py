@@ -5,16 +5,13 @@ from tqdm import tqdm
 from pathlib import Path
 
 
-BASE_URL = "https://www.thestudentfoodproject.com/"
-
-
-def get_recipe_urls():
-
+def get_recipe_urls(base_url: str):
+    """Gets all recipe urls from the different sections on the website."""
     recipe_urls = []
 
     for i in ["/main-courses", "/lunch", "/breakfasts", "/desserts", "/drinks",
               "/vegan"]:
-        page = requests.get(BASE_URL + i)
+        page = requests.get(base_url + i)
         soup = BeautifulSoup(page.content, 'html.parser')
         for link in soup.find_all(
                 "a",
@@ -26,13 +23,11 @@ def get_recipe_urls():
     return recipe_urls
 
 
-if __name__ == '__main__':
+def scrape_from_studentfoodproject(data_dir: Path):
     """Scrapes recipes from The Student Food Project."""
-    output_file = Path('../../data/studentfoodrecipe.pkl')
-    recipe_urls = get_recipe_urls()
+    base_url = "https://www.thestudentfoodproject.com/"
 
-    headerList = ['name', 'description', 'nutrition_name', 'nutrition_value',
-                  'ingredients', 'method', 'recipe_url']
+    recipe_urls = get_recipe_urls(base_url)
 
     data = {"name": [],
             "description": [],
@@ -46,7 +41,7 @@ if __name__ == '__main__':
     prog_bar.set_description(f"Starting download")
 
     for recipe in recipe_urls:
-        recipe_url = BASE_URL + recipe
+        recipe_url = base_url + recipe
         recipe_page = requests.get(recipe_url)
 
         # Get ingredients
@@ -85,4 +80,8 @@ if __name__ == '__main__':
         prog_bar.update(1)
 
     data_df = pd.DataFrame(data)
-    data_df.to_pickle(str(output_file))
+    data_df.to_pickle(str(data_dir / "studentfoodrecipe.pkl"))
+
+
+if __name__ == '__main__':
+    scrape_from_studentfoodproject(Path('../../data/'))
