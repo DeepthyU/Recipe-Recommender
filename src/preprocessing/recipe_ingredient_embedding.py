@@ -132,7 +132,7 @@ def embed_ingredient_list(ingredient_list: List[str],
     return split_ingredients
 
 
-def main(data_dir: Path):
+def embed_recipe_ingredients(data_dir: Path):
     # First find the recipe files
     recipe_files = []
     for file in data_dir.glob("*.pkl"):
@@ -151,9 +151,9 @@ def main(data_dir: Path):
         df["ingredients"] = df["ingredients"]\
             .apply(lambda row: embed_ingredient_list(row, model))
 
-        df.to_pickle(recipe_file.with_name(recipe_file.stem + "_canonical.pkl"))
+        df.to_pickle(recipe_file.with_name(recipe_file.stem + "_embedded.pkl"))
 
 
 if __name__ == '__main__':
     args = parse_args()
-    main(args.data_dir)
+    embed_recipe_ingredients(args.data_dir)

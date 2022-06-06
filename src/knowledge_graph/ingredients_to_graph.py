@@ -6,14 +6,11 @@ from argparse import ArgumentParser
 from pathlib import Path
 from typing import List
 
-import gensim.downloader as api
 import pandas as pd
 from gensim.models import KeyedVectors
 from neo4j import GraphDatabase, Driver
 from tqdm import tqdm
 from time import perf_counter
-
-from preprocessing.word_embedding import embed_canonical_ingredients
 
 
 def parse_args():
@@ -31,7 +28,7 @@ def add_all_canonical_ingredients(driver: Driver,
     """Adds all canonical ingredients to the knowledge graph.
 
     Args:
-        session: The session the transactions should be committed on.
+        driver: The driver the transactions should be committed with.
         embeddings: The embeddings of the canonical ingredients
     """
     ingredients = []
@@ -46,12 +43,11 @@ def add_all_canonical_ingredients(driver: Driver,
     with driver.session() as session:
         run_str = """ UNWIND $ingredients as row
                       MERGE (a:CanonicalIngredient {name: row.name})
-                      ON CREATE SET a.id = row.node_id
+                      ON CREATE SET a.id =        row.node_id
                       ON CREATE SET a.embedding = row.embedding"""
         session.run(run_str, ingredients=ingredients)
     t = perf_counter() - start
-    print(f"Done adding canonical ingredients. {t=}")
-
+    print(f"Done adding canonical ingredients. {t=:.3f}")
 
 
 def add_all_ingredient_substitutions(driver: Driver,
@@ -59,7 +55,7 @@ def add_all_ingredient_substitutions(driver: Driver,
     """Adds all ingredient substitution relationships.
 
     Args:
-        session: The session the transactions should be committed on.
+        driver: The driver the transactions should be committed with.
         substitutions: The proper ingredient substitutions in (from, to) format.
     """
     for substitution in tqdm(substitutions, desc="Adding substitutions"):
@@ -123,20 +119,17 @@ def add_all_nutritional_values(driver: Driver, nutrition_df: pd.DataFrame):
             session.run(run_str, relations=relations)
 
 
-def main(data_dir: Path, uri: str, user: str, password: str):
-    """Adds the provided ingredients and recipes to the graph.
+def add_ingredients_to_graph(data_dir: Path, uri: str, user: str,
+                             password: str):
+    """Adds the provided ingredients to the graph.
 
     Args:
         data_dir: Path to the data directory.
+        uri: URI the database is currently hosted on
+        user: The user to authenticate to the database with.
+        password: The password to authenticate to the database with.
     """
     canonical_embed_path = data_dir / "canonical_ingredient_embeddings.gz"
-    if not canonical_embed_path.exists():
-        # Load pretrained GloVe model
-        print("Loading pretrained GloVe model...")
-        model = api.load("glove-wiki-gigaword-300")
-        print("Pretrained model loaded!")
-
-        embed_canonical_ingredients(data_dir, canonical_embed_path, model)
 
     # Collect required data
     print("Collecting required data...")
@@ -158,7 +151,7 @@ def main(data_dir: Path, uri: str, user: str, password: str):
 
 if __name__ == '__main__':
     args = parse_args()
-    uri = f"bolt://localhost:{args.PORT}"
-    user = "neo4j"
-    password = "password"
-    main(args.DATA_DIR, uri, user, password)
+    add_ingredients_to_graph(args.DATA_DIR,
+                             uri=f"bolt://localhost:{args.PORT}",
+                             user="neo4j",
+                             password="password")
