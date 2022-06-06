@@ -53,3 +53,42 @@ LOAD CSV WITH HEADERS  FROM "file:///values.csv" AS line
 MATCH  (a:recipe),(b:value)
 WHERE b.name='protein' and a.name=line.name
 CREATE (a)-[:HAS_NUTRITIONAL_VALUE{amount: line.protein}]->(b)
+
+
+
+-------------------------------------------------------------
+CREATE CONSTRAINT UniqueIngredient ON (n:CanonicalIngredient) ASSERT n.name IS UNIQUE;
+
+MERGE (i:Nutrition {id: nv_1})
+  SET i.name = "Protein"
+RETURN i;
+
+
+MERGE (i:Nutrition {id: nv_2})
+  SET i.name = "Fat"
+RETURN i;
+
+
+MERGE (i:Nutrition {id: nv_3)
+  SET i.name = "Carbohydrates"
+RETURN i;
+
+LOAD CSV WITH HEADERS FROM 'file:///nutrition.csv' AS row
+WITH toInteger(row.id) AS ingredientId, row.name as name, toFloat(trim(replace(row.protein, "g", ""))) as protein_in_grams, toFloat(trim(replace(row.carbohydrate, "g", ""))) as carbohydrate_in_grams, toFloat(trim(replace(row.total_fat, "g", ""))) as fat_in_grams
+MERGE (i:CanonicalIngredient {name: name})-[r:hasNutritionalValue]->(n:Nutrition)
+CASE n.name
+	WHEN 'Protein' THEN SET r.amount=protein_in_grams/100
+	WHEN 'Carbohydrates' THEN SET r.amount=carbohydrate_in_grams/100
+	WHEN 'Fat' THEN SET r.amount=fat_in_grams/100
+SET i.id = ingredientId
+RETURN count(i);
+--------------------------------------------------------------
+QUERIES:
+MATCH (r:Recipe{name:"recipe_name"})-[v:hasNutritionalValue]->(p:Nutrition)
+RETURN v.amount,p.name
+
+MATCH (r:RECIPE{name:"recipe_name"})-[a:hasIngredient]->(i:Ingredient)-[<find canonical match>]]->(c:CanonicalIngredient)-[v:hasNutritionalValue]->(p:Nutrition)
+RETURN a.quantity,v.amount,p.name
+
+
+
