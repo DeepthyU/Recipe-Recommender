@@ -75,7 +75,14 @@ else:
 if st.button('Continue'):
     selected_ingredients_list = st.multiselect('Select ingredients', ingredient_list, default=None, key=None)
     nutrition_requirements = compute_nutritional_needs(person)
-    carbs, fat, protein = nutrition_requirements.carb_calories, nutrition_requirements.fat_calories, \
-                          nutrition_requirements.protein_calories
-
-    print(nutrition_requirements)
+    carbs, fat, protein = nutrition_requirements.carb_calories/4, nutrition_requirements.fat_calories/4, \
+                          nutrition_requirements.protein_calories/4
+    total_calories = nutrition_requirements.total_eer
+    query_get_recipes = 'match (carbs:NutritionalValue{name: "Carbohydrates"}) <-[c:HAS_NUTRITIONAL_VALUE ]-(a:Recipe)-[p:HAS_NUTRITIONAL_VALUE]->(protein:NutritionalValue{name: "Protein"})\
+                        match (fats:NutritionalValue{name: "Total Fat"}) <-[f:HAS_NUTRITIONAL_VALUE ]-(a:Recipe)-[:HAS_INGREDIENT]->(i:Ingredient)\
+                        WHERE c.amount/(c.amount+p.amount+f.amount) >'+ str(carbs/total_calories)+ ' AND p.amount/(c.amount+p.amount+f.amount)  >'+ str(protein/total_calories) +' AND f.amount/(c.amount+p.amount+f.amount)  >'+ str(fat/total_calories) +\
+                        ' return  i, a limit 10'
+    print(query_get_recipes)
+    recipes = (session.run(query_get_recipes))
+    print([i[0] for i in (recipes.values())])
+    print( carbs, fat, protein)
