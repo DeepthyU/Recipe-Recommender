@@ -29,6 +29,44 @@ def embed_ingredient_string(ingredient_str: str,
     return calculate_averaged_embedding(ing_list, model)
 
 
+def match_canonical_name(embedding: np.ndarray,
+                         name_vecs: KeyedVectors) -> str or None:
+    """Matches the closest canonical name.
+
+    Matches the given ingredient to the closest name in the names dataframe
+    using cosine similarity. Uses a threshold of 0.8 as the cutoff below which
+    no canonical name is returned.
+
+    Matching is done by the GloVe embedding of canonical ingredient names.
+    Names which are multi-word have their embedding vectors averaged. Once a
+    GloVe embedding has been calculated, the cosine similarity between all
+    ingredients are calculated and the maximum, if it has a value above 0.8, is
+    used as the canonical name.
+
+    We use the pretrained model glove-wiki-gigaword-300.
+
+    Args:
+        embedding: The embedding of the ingredient to be matched
+        name_vecs: The embeddings of canonical ingredients as a KeyedVectors
+            object.
+
+    References:
+        "Automated Identification of Food Substitutes Using Knowledge Graph
+            Embeddings". Loesch et al.
+        "GloVe: Global Vectors for Word Representation". Pennington et al.
+        <https://github.com/RaRe-Technologies/gensim-data>
+    Returns:
+        The canonical name or None
+    """
+    if embedding is not None:
+        # Get the most similar word
+        most_similar = name_vecs.similar_by_vector(embedding, topn=1)[0]
+        if most_similar[1] > 0.8:
+            return most_similar[0]
+    # If embedding was None or the similarity < 0.8,
+    return None
+
+
 def calculate_averaged_embedding(ingredient: List[str],
                                  model: KeyedVectors) -> np.ndarray or None:
     """Calculates the averaged word embedding of a list of words.
