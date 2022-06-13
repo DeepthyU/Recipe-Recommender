@@ -43,8 +43,8 @@ def add_all_canonical_ingredients(driver: Driver,
     with driver.session() as session:
         run_str = """ UNWIND $ingredients as row
                       MERGE (a:CanonicalIngredient {name: row.name})
-                      ON CREATE SET a.id =        row.node_id
-                      ON CREATE SET a.embedding = row.embedding"""
+                      ON CREATE SET a.id =        row.node_id,
+                                    a.embedding = row.embedding"""
         session.run(run_str, ingredients=ingredients)
     t = perf_counter() - start
     print(f"Done adding canonical ingredients. {t=:.3f}")
