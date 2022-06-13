@@ -9,7 +9,8 @@ from argparse import ArgumentParser
 import pandas as pd
 from gensim.models import KeyedVectors
 import gensim.downloader as api
-from preprocessing.word_embedding import embed_ingredient_string
+from preprocessing.word_embedding import embed_ingredient_string, \
+    match_canonical_name
 
 
 def parse_args():
@@ -108,25 +109,31 @@ def ingredient_split(ingredient: str) -> Tuple[str, str]:
 
 
 def embed_ingredient_list(ingredient_list: List[str],
-                          model: KeyedVectors) -> List[dict]:
+                          model: KeyedVectors,
+                          canonical_embeddings: KeyedVectors) -> List[dict]:
     """Takes a list of ingredients and makes the appropriate dictionaries.
 
     Args:
         ingredient_list: The list of ingredients to process.
         model: The model to use for the embedding.
+        canonical_embeddings: The embeddings of the canonical ingredients as a
+            KeyedVectors object.
 
     Returns:
         A list of dictionaries with keys [original_name, amount,
-            ingredient_name, embedding]
+            ingredient_name, canonical_name, embedding]
     """
     split_ingredients = []
     for ing in ingredient_list:
         amount, ingredient_name = ingredient_split(ing)
         embedding = embed_ingredient_string(ingredient_name, model)
+        closest_canonical = match_canonical_name(embedding,
+                                                 canonical_embeddings)
         split_ingredients.append({
             "original_name": ing,
             "amount": amount,
             "ingredient_name": ingredient_name,
+            "canonical_name": closest_canonical,
             "embedding": embedding})
 
     return split_ingredients
@@ -144,12 +151,17 @@ def embed_recipe_ingredients(data_dir: Path):
     model = api.load("glove-wiki-gigaword-300")
     print("Pretrained model loaded!")
 
+    canonical_embeddings = KeyedVectors.load(
+        str(data_dir / "canonical_ingredient_embeddings.gz")
+    )
+
     # For each recipe file
     for recipe_file in recipe_files:
         # Read the file and calculate the ingredient embeddings
         df = pd.read_pickle(recipe_file)
         df["ingredients"] = df["ingredients"]\
-            .apply(lambda row: embed_ingredient_list(row, model))
+            .apply(lambda row: embed_ingredient_list(row, model,
+                                                     canonical_embeddings))
 
         df.to_pickle(recipe_file.with_name(recipe_file.stem + "_embedded.pkl"))
 

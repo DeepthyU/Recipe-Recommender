@@ -2,9 +2,7 @@
 
 Converts all recipes to their appropriate graph representations.
 """
-from argparse import ArgumentParser
 from pathlib import Path
-from typing import List
 import pandas as pd
 from neo4j import Driver, GraphDatabase
 from time import perf_counter
@@ -23,10 +21,10 @@ def add_recipes(driver: Driver, recipe_df: pd.DataFrame):
     with driver.session() as session:
         run_str = """ UNWIND $records as row
                       MERGE (a:Recipe {name: row.name})
-                      ON CREATE SET a.id =          row.node_id
-                      ON CREATE SET a.description = row.description
-                      ON CREATE SET a.url =         row.recipe_url
-                      ON CREATE SET a.method =      row.method """
+                      ON CREATE SET a.id =          row.node_id,
+                                    a.description = row.description,
+                                    a.url =         row.recipe_url,
+                                    a.method =      row.method """
         session.run(run_str, records=recipes)
     t = perf_counter() - start
     print(f"Done adding recipes. {t=:.3f}")
@@ -59,15 +57,17 @@ def add_recipe_ingredients(driver: Driver, recipe_df: pd.DataFrame):
     """Adds associated ingredients to recipes on the graph."""
     # Make sure that the embeddings are a list
     def embeddings_to_list(ingredient_list):
-        l = []
+        out = []
         for ingredient in ingredient_list:
             if ingredient["embedding"] is not None:
                 e = (ingredient["embedding"].tolist())
             else:
                 e = None
-            l.append({'name': ingredient["original_name"],
-                      "embedding": e})
-        return l
+            out.append({"original_name": ingredient["original_name"],
+                        "amount": ingredient["amount"],
+                        "canonical_name": ingredient["canonical_name"],
+                        "embedding": e})
+        return out
     recipe_df["ingredients"] = recipe_df["ingredients"].apply(
         lambda x: embeddings_to_list(x))
     records = recipe_df.to_dict("records")
@@ -76,23 +76,43 @@ def add_recipe_ingredients(driver: Driver, recipe_df: pd.DataFrame):
         # Add the ingredients first
         with driver.session() as session:
             run_str = """ UNWIND $ingredients as row
-                          MERGE (a:Ingredient {name: row.name})
-                          ON CREATE SET a.embedding = row.embedding """
+                          MERGE (a:Ingredient {name: row.original_name})
+                          ON CREATE SET a.embedding = row.embedding
+                          """
             session.run(run_str, ingredients=record["ingredients"])
 
         # Now make the relationships
         relations = []
         for ingredient in record["ingredients"]:
             relations.append({"origin": record["name"],
-                              "target": ingredient["name"]})
+                              "target": ingredient["original_name"],
+                              "amount": ingredient["amount"]})
         with driver.session() as session:
-            run_str = """ UNWIND $relations as row
-                          MATCH (a:Recipe),
-                                (b:Ingredient)
-                          WHERE a.name = row.origin AND b.name = row.target
-                          CREATE (a)-[r:HAS_INGREDIENT]->(b) """
+            run_str = """UNWIND $relations as row
+                         MATCH (a:Recipe {name: row.origin}),
+                               (b:Ingredient {name: row.target})
+                         MERGE (a)-[r:HAS_INGREDIENT]->(b) 
+                         ON CREATE SET r.amount = row.amount
+                         """
             session.run(run_str, relations=relations)
 
+
+def add_canonical_ingredient_relation(driver: Driver, recipe_df: pd.DataFrame):
+    """Adds a relationship between an ingredient and its canonical ingredient.
+    """
+    records = recipe_df.to_dict("records")
+
+    for record in tqdm(records, desc="Adding ingredient canonical relations"):
+        relations = []
+        for ingredient in record["ingredients"]:
+            relations.append({"origin": ingredient["original_name"],
+                              "target": ingredient["canonical_name"]})
+        with driver.session() as session:
+            run_str = """ UNWIND $relations as row
+                          MATCH (a:Ingredient {name: row.origin}),
+                                (b:CanonicalIngredient {name: row.target})
+                          MERGE (a)-[r:HAS_CANONICAL_NAME]->(b) """
+            session.run(run_str, relations=relations)
 
 
 def add_recipes_to_graph(data_dir: Path, uri: str, user: str, password: str):
@@ -114,5 +134,9 @@ def add_recipes_to_graph(data_dir: Path, uri: str, user: str, password: str):
 
     add_recipes(driver, recipe_df)
     add_recipe_nutritional_values(driver, nv_df)
+
     add_recipe_ingredients(driver, bbc_df)
+    add_canonical_ingredient_relation(driver, bbc_df)
+
     add_recipe_ingredients(driver, sfp_df)
+    add_canonical_ingredient_relation(driver, sfp_df)

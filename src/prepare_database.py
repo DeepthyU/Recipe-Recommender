@@ -45,31 +45,21 @@ if __name__ == '__main__':
         "Substitutions dataset could not be found."
 
     # First scrape the websites
-    if not ((data_dir / "recipe_bbc.pkl").exists()
-            or (data_dir / "recipe_bbc_embedded.pkl").exists()):
+    if not (data_dir / "recipe_bbc.pkl").exists():
         # Then we need to scrape the bbc website
         print("Scraping BBC website...")
-        scrape_from_bbc(args.DATA_DIR)
+        scrape_from_bbc(data_dir)
     else:
         print("BBC website already scraped.")
 
-    if not ((data_dir / "studentfoodrecipe.pkl)").exists()
-            or (data_dir / "studentfoodrecipe_embedded.pkl").exists()):
+    if not (data_dir / "studentfoodrecipe.pkl").exists():
         # Then we need to scrape the student food project website
         print("Scraping The Student Food Project website...")
-        scrape_from_studentfoodproject(args.DATA_DIR)
+        scrape_from_studentfoodproject(data_dir)
     else:
         print("Student Food Project website already scraped.")
 
     # We then embed all the ingredients
-    if not ((data_dir / "recipe_bbc_embedded.pkl").exists()
-            and (data_dir / "studentfoodrecipe_embedded.pkl").exists()):
-        # Then we need to embed the ingredients in the recipes
-        print("Getting embeddings for recipe ingredients...")
-        embed_recipe_ingredients(args.DATA_DIR)
-    else:
-        print("Recipe ingredient embeddings found.")
-
     canonical_embed_path = data_dir / "canonical_ingredient_embeddings.gz"
     if not canonical_embed_path.exists():
         print("Embedding canonical ingredients")
@@ -81,6 +71,14 @@ if __name__ == '__main__':
         embed_canonical_ingredients(data_dir, canonical_embed_path, model)
     else:
         print("Canonical ingredient embeddings found.")
+
+    if not ((data_dir / "recipe_bbc_embedded.pkl").exists()
+            and (data_dir / "studentfoodrecipe_embedded.pkl").exists()):
+        # Then we need to embed the ingredients in the recipes
+        print("Getting embeddings for recipe ingredients...")
+        embed_recipe_ingredients(data_dir)
+    else:
+        print("Recipe ingredient embeddings found.")
 
     # And clean up the data for the other scripts
     print("Cleaning data for scripts...")
@@ -99,7 +97,7 @@ if __name__ == '__main__':
 
     uri = f"bolt://localhost:{args.PORT}"
 
-    print("Adding canonical ingredients to graph")
-    add_ingredients_to_graph(data_dir, uri, args.user, args.password)
+    # print("Adding canonical ingredients to graph")
+    # add_ingredients_to_graph(data_dir, uri, args.user, args.password)
     print("Adding recipes to graph")
     add_recipes_to_graph(data_dir, uri, args.user, args.password)
