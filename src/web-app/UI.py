@@ -1,3 +1,5 @@
+from math import ceil
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,6 +8,45 @@ import sys
 import csv
 
 # sys.path.insert(1,'../nutritional_requirements')
+from pandas import DataFrame
+
+
+def get_df(results, columns):
+    recipe_list = []
+    for i in results.data():
+        recipe_list.append([i[columns[0]], str(i[columns[1]])])
+    df = pd.DataFrame(recipe_list, columns=columns)
+    # print(df)
+    return df
+
+
+def calculate_nutritional_value(nut_list):
+    nutritional_value = 0
+    # print(nut_list)
+    for i in range(len(nut_list)):
+        if 'g' in nut_list[i]['i.amount']:
+            amount = float(nut_list[i]['i.amount'].replace('g', ''))
+        elif 'ml' in nut_list[i]['i.amount']:
+            amount = float(nut_list[i]['i.amount'].replace('ml', ''))
+        elif 'kg' in nut_list[i]['i.amount']:
+            amount = float(nut_list[i]['i.amount'].replace('kg', '')) * 1000
+        else:
+            try:
+                amount = float(nut_list[i]['i.amount'])
+            except:
+                amount = 0
+        nutritional_value += amount * (float(nut_list[i]['nv_rel.amount'].replace('g', ''))) / 100
+        # print("nutritional_value", nutritional_value)
+    return nutritional_value
+
+def get_nutr_from_db(session, recipe_name, nutrient):
+    query = """MATCH (recipe:Recipe)-[i:HAS_INGREDIENT]->(ing:Ingredient)-[ci:HAS_CANONICAL_NAME]\
+                    ->(can:CanonicalIngredient)-[nv_rel:HAS_NUTRITIONAL_VALUE]->(nv:NutritionalValue{name: $nutrient }) \
+                     WHERE recipe.name = $recipe_name \
+                     RETURN i.amount, nv_rel.amount"""
+    results = session.run(query, recipe_name=recipe_name, nutrient=nutrient)
+    return results
+
 import nutritional_requirements.constants as const
 from nutritional_requirements.person_profile import PersonProfile
 from nutritional_requirements.nutrition_requirements import NutritionReq
@@ -16,11 +57,11 @@ st.title('Recipe recommendations for students')
 st.subheader('To calculate your nutrition requirements, please enter your information below (metric unit)')
 neo4j_connection = GraphDatabase.driver(uri="bolt://localhost:7687", auth=("neo4j", "password"))
 session = neo4j_connection.session()
-results = (session.run("MATCH (n:CanonicalIngredient) RETURN n.name"))
+results = (session.run("MATCH p = (recipe:Recipe)-[i:HAS_INGREDIENT]->(ing:Ingredient)-\
+                        [ci:HAS_CANONICAL_NAME]->(can:CanonicalIngredient) \
+                        RETURN DISTINCT can.name"))
 ingredient_list = [i[0] for i in (results.values())]
 
-# if username = '' is submitted, then it will always show the details of that person, and won't allow new person to be added
-# todo: maybe fix it
 username = st.text_input('Enter username')
 st.session_state['username'] = username
 # get usernames from csv file
@@ -34,7 +75,6 @@ else:
     user_list = []
 if st.session_state.username not in user_list:
     with st.form("my_form"):
-        # TODO: Add a unique check for username
         height = st.number_input('Height in cm', 0)
         weight = st.number_input('Weight in kg', 0)
         sex = st.selectbox('Select your sex', (const.SEX_FEMALE, const.SEX_MALE))
@@ -72,17 +112,75 @@ else:
                            df['Protein_percent'], df['Carb_percent'], df['Fat_percent'])
 
 # carbohydrates, fat and protein requirements
+
+
+nutrition_requirements = compute_nutritional_needs(person)
+carbs, fat, protein = nutrition_requirements.carb_grams / 4, nutrition_requirements.fat_grams / 4, \
+                      nutrition_requirements.protein_grams / 4
+
+query_get_recipes = "MATCH (recipe:Recipe) return recipe.name, recipe.method"
+all_recipes = (session.run(query_get_recipes))
+all_recipes_df = get_df(all_recipes, ['recipe.name', 'recipe.method'])
+print("all_recipes.data()", all_recipes.data())
+
+# # for each recipe, ingredient, calculate the number of protein
+# for i in all_recipes_df['recipe.name']:
+#     query_protein = 'MATCH (recipe:Recipe)-[i:HAS_INGREDIENT]->(ing:Ingredient)-[ci:HAS_CANONICAL_NAME]\
+#                     ->(can:CanonicalIngredient)-[nv_rel:HAS_NUTRITIONAL_VALUE]->(nv:NutritionalValue{name: "Protein"})\
+#                      RETURN recipe.name, ing.name, can.name, i.amount, nv_rel.amount'
+#
+#     protein = (session.run(query_protein))
+
+query_get_recipes = 'MATCH p = (recipe:Recipe)-[i:HAS_INGREDIENT]->(ing:Ingredient)-[ci:HAS_CANONICAL_NAME]\
+            ->(can_ing:CanonicalIngredient)\
+            return  recipe.name, can_ing.name'
+
+recipes = (session.run(query_get_recipes))
+df_recipe = get_df(recipes, ['recipe.name', 'can_ing.name'])
+
+selected_ingredients_list = st.multiselect('Select ingredients (start typing to filter options)', ingredient_list,
+                                           default=None, key=None)
 if st.button('Continue'):
-    selected_ingredients_list = st.multiselect('Select ingredients', ingredient_list, default=None, key=None)
-    nutrition_requirements = compute_nutritional_needs(person)
-    carbs, fat, protein = nutrition_requirements.carb_calories/4, nutrition_requirements.fat_calories/4, \
-                          nutrition_requirements.protein_calories/4
-    total_calories = nutrition_requirements.total_eer
-    query_get_recipes = 'match (carbs:NutritionalValue{name: "Carbohydrates"}) <-[c:HAS_NUTRITIONAL_VALUE ]-(a:Recipe)-[p:HAS_NUTRITIONAL_VALUE]->(protein:NutritionalValue{name: "Protein"})\
-                        match (fats:NutritionalValue{name: "Total Fat"}) <-[f:HAS_NUTRITIONAL_VALUE ]-(a:Recipe)-[:HAS_INGREDIENT]->(i:Ingredient)\
-                        WHERE c.amount/(c.amount+p.amount+f.amount) >'+ str(carbs/total_calories)+ ' AND p.amount/(c.amount+p.amount+f.amount)  >'+ str(protein/total_calories) +' AND f.amount/(c.amount+p.amount+f.amount)  >'+ str(fat/total_calories) +\
-                        ' return  i, a limit 10'
-    print(query_get_recipes)
-    recipes = (session.run(query_get_recipes))
-    print([i[0] for i in (recipes.values())])
-    print( carbs, fat, protein)
+    print("selected_ingredients", selected_ingredients_list)
+    # recipe dict to keep count of recipes which have the most number of selected ingredients
+    recipe_dict = dict()
+    for i in selected_ingredients_list:
+        print(i)
+        print(df_recipe[df_recipe['can_ing.name'] == i]['recipe.name'])
+        for j in df_recipe[df_recipe['can_ing.name'] == i]['recipe.name']:
+            if j in recipe_dict:
+                recipe_dict[j] += 1
+            else:
+                recipe_dict[j] = 1
+    print(recipe_dict)
+    # get the recipe with the most number of selected ingredients
+    max_recipe = max(recipe_dict, key=recipe_dict.get)
+    print(max_recipe)
+    print(all_recipes_df[all_recipes_df['recipe.name']==max_recipe])
+    #
+    # query_protein = 'MATCH (recipe:Recipe)-[i:HAS_INGREDIENT]->(ing:Ingredient)-[ci:HAS_CANONICAL_NAME]\
+    #                 ->(can:CanonicalIngredient)-[nv_rel:HAS_NUTRITIONAL_VALUE]->(nv:NutritionalValue{name: "Protein"}) \
+    #                  WHERE recipe.name = $max_recipe \
+    #                  RETURN i.amount, nv_rel.amount'
+    #
+    # protein_res = (session.run(query_protein, max_recipe=max_recipe))
+    nutrition_dict = {'Protein':0, 'Carbohydrates': 0, 'Total Fat': 0}
+    for i in nutrition_dict:
+        res = get_nutr_from_db(session, max_recipe, i)
+        nutrition_dict[i] = ceil(calculate_nutritional_value(res.data()))
+
+    print(nutrition_dict)
+    print("protein, carbs, fat",protein, carbs, fat)
+    # for each recipe, calculate the number of carbs
+    # for each recipe, calculate the number of fat
+    # get the amount for each ingredient based on ingredient amount string
+    # multiply each ingredient by the amount
+    # Then aggregate sum it for each recipe
+    # Then filter the recipes based on nutritional requirements
+    # Then sort the recipes based on the sum of protein, carbs and fat
+
+    # recipe_dict[df_recipe[df_recipe['can_ing.name'] == i]['recipe.name'].values[0]] += 1
+
+    # print("recipe_dict", recipe_dict)
+    # df_grouped['match_percent'] = df_grouped['can_ing.name'].apply(lambda x: len([]) / len(selected_ingredients_list))
+    # get recipes which have ingredients in the selected list
