@@ -98,6 +98,6 @@ if __name__ == '__main__':
     uri = f"bolt://localhost:{args.PORT}"
 
     # print("Adding canonical ingredients to graph")
-    # add_ingredients_to_graph(data_dir, uri, args.user, args.password)
+    add_ingredients_to_graph(data_dir, uri, args.user, args.password)
     print("Adding recipes to graph")
     add_recipes_to_graph(data_dir, uri, args.user, args.password)
