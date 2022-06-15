@@ -1,3 +1,4 @@
+import collections
 from math import ceil
 
 import streamlit as st
@@ -24,20 +25,21 @@ def calculate_nutritional_value(nut_list):
     nutritional_value = 0
     # print(nut_list)
     for i in range(len(nut_list)):
-        if 'g' in nut_list[i]['i.amount']:
-            amount = float(nut_list[i]['i.amount'].replace('g', ''))
-        elif 'ml' in nut_list[i]['i.amount']:
-            amount = float(nut_list[i]['i.amount'].replace('ml', ''))
-        elif 'kg' in nut_list[i]['i.amount']:
-            amount = float(nut_list[i]['i.amount'].replace('kg', '')) * 1000
-        else:
-            try:
-                amount = float(nut_list[i]['i.amount'])
-            except:
-                amount = 0
+        try:
+            if 'g' in nut_list[i]['i.amount']:
+                amount = float(nut_list[i]['i.amount'].replace('g', ''))
+            elif 'ml' in nut_list[i]['i.amount']:
+                amount = float(nut_list[i]['i.amount'].replace('ml', ''))
+            elif 'kg' in nut_list[i]['i.amount']:
+                amount = float(nut_list[i]['i.amount'].replace('kg', '')) * 1000
+            else:
+                    amount = float(nut_list[i]['i.amount'])
+        except:
+            amount = 0
         nutritional_value += amount * (float(nut_list[i]['nv_rel.amount'].replace('g', ''))) / 100
         # print("nutritional_value", nutritional_value)
     return nutritional_value
+
 
 def get_nutr_from_db(session, recipe_name, nutrient):
     query = """MATCH (recipe:Recipe)-[i:HAS_INGREDIENT]->(ing:Ingredient)-[ci:HAS_CANONICAL_NAME]\
@@ -46,6 +48,15 @@ def get_nutr_from_db(session, recipe_name, nutrient):
                      RETURN i.amount, nv_rel.amount"""
     results = session.run(query, recipe_name=recipe_name, nutrient=nutrient)
     return results
+
+
+def get_recipe_diff(recipe_nutr_dict, person_req_dict):
+    recipe_diff = []
+    for key in recipe_nutr_dict:
+        print(key)
+        recipe_diff.append(abs(recipe_nutr_dict[key] - person_req_dict[key]))
+    return max(recipe_diff)
+
 
 import nutritional_requirements.constants as const
 from nutritional_requirements.person_profile import PersonProfile
@@ -111,25 +122,14 @@ else:
                            df['Waist size'], df['Expectation'],
                            df['Protein_percent'], df['Carb_percent'], df['Fat_percent'])
 
-# carbohydrates, fat and protein requirements
-
-
 nutrition_requirements = compute_nutritional_needs(person)
-carbs, fat, protein = nutrition_requirements.carb_grams / 4, nutrition_requirements.fat_grams / 4, \
-                      nutrition_requirements.protein_grams / 4
+carbs, fat, protein = nutrition_requirements.carb_grams, nutrition_requirements.fat_grams / 4, \
+                      nutrition_requirements.protein_grams
 
 query_get_recipes = "MATCH (recipe:Recipe) return recipe.name, recipe.method"
 all_recipes = (session.run(query_get_recipes))
 all_recipes_df = get_df(all_recipes, ['recipe.name', 'recipe.method'])
 print("all_recipes.data()", all_recipes.data())
-
-# # for each recipe, ingredient, calculate the number of protein
-# for i in all_recipes_df['recipe.name']:
-#     query_protein = 'MATCH (recipe:Recipe)-[i:HAS_INGREDIENT]->(ing:Ingredient)-[ci:HAS_CANONICAL_NAME]\
-#                     ->(can:CanonicalIngredient)-[nv_rel:HAS_NUTRITIONAL_VALUE]->(nv:NutritionalValue{name: "Protein"})\
-#                      RETURN recipe.name, ing.name, can.name, i.amount, nv_rel.amount'
-#
-#     protein = (session.run(query_protein))
 
 query_get_recipes = 'MATCH p = (recipe:Recipe)-[i:HAS_INGREDIENT]->(ing:Ingredient)-[ci:HAS_CANONICAL_NAME]\
             ->(can_ing:CanonicalIngredient)\
@@ -156,31 +156,32 @@ if st.button('Continue'):
     # get the recipe with the most number of selected ingredients
     max_recipe = max(recipe_dict, key=recipe_dict.get)
     print(max_recipe)
-    print(all_recipes_df[all_recipes_df['recipe.name']==max_recipe])
-    #
-    # query_protein = 'MATCH (recipe:Recipe)-[i:HAS_INGREDIENT]->(ing:Ingredient)-[ci:HAS_CANONICAL_NAME]\
-    #                 ->(can:CanonicalIngredient)-[nv_rel:HAS_NUTRITIONAL_VALUE]->(nv:NutritionalValue{name: "Protein"}) \
-    #                  WHERE recipe.name = $max_recipe \
-    #                  RETURN i.amount, nv_rel.amount'
-    #
-    # protein_res = (session.run(query_protein, max_recipe=max_recipe))
-    nutrition_dict = {'Protein':0, 'Carbohydrates': 0, 'Total Fat': 0}
-    for i in nutrition_dict:
-        res = get_nutr_from_db(session, max_recipe, i)
-        nutrition_dict[i] = ceil(calculate_nutritional_value(res.data()))
+    print(all_recipes_df[all_recipes_df['recipe.name'] == max_recipe])
+    recipe_nutr_dict = {}
+    print("protein, carbs, fat", protein, carbs, fat)
+    # pick top 5 recipes with the most number of selected ingredients
+    sorted_recipes = dict(sorted(recipe_dict.items(), key=lambda item: item[1], reverse=True))
+    print(sorted_recipes)
+    counter = 0
+    recipe_nut_val= {}
+    for i in sorted_recipes:
+        if counter == 5:
+            break
+        else:
+            counter += 1
+            recipe_nutr_dict[i] = {'Protein': 0, 'Carbohydrates': 0, 'Total Fat': 0}
+            for j in recipe_nutr_dict[i]:
+                res = get_nutr_from_db(session, i, j)
+                print(j)
+                recipe_nutr_dict[i][j] = ceil(calculate_nutritional_value(res.data()))
+            recipe_nut_val[i] = get_recipe_diff(recipe_nutr_dict[i],
+                                                     {'Protein': protein, 'Carbohydrates': carbs, 'Total Fat': fat})
+    print(recipe_nutr_dict)
 
-    print(nutrition_dict)
-    print("protein, carbs, fat",protein, carbs, fat)
-    # for each recipe, calculate the number of carbs
-    # for each recipe, calculate the number of fat
-    # get the amount for each ingredient based on ingredient amount string
-    # multiply each ingredient by the amount
-    # Then aggregate sum it for each recipe
-    # Then filter the recipes based on nutritional requirements
-    # Then sort the recipes based on the sum of protein, carbs and fat
+    # get max difference in nutritional values
+    min_diff_recipe = min(recipe_nut_val, key=recipe_nut_val.get)
+    print(min_diff_recipe)
+    # display the recipe with the min difference in nutritional values
+    st.write(min_diff_recipe)
+    st.write(all_recipes_df[all_recipes_df['recipe.name'] == min_diff_recipe])
 
-    # recipe_dict[df_recipe[df_recipe['can_ing.name'] == i]['recipe.name'].values[0]] += 1
-
-    # print("recipe_dict", recipe_dict)
-    # df_grouped['match_percent'] = df_grouped['can_ing.name'].apply(lambda x: len([]) / len(selected_ingredients_list))
-    # get recipes which have ingredients in the selected list
