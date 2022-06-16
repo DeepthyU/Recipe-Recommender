@@ -122,7 +122,26 @@ else:
                            df['Waist size'], df['Expectation'],
                            df['Protein_percent'], df['Carb_percent'], df['Fat_percent'])
 
-nutrition_requirements = compute_nutritional_needs(person)
+try:
+    nutrition_requirements = compute_nutritional_needs(person)
+except ZeroDivisionError:
+    pid = 1
+    name = "Smith"
+    age = 20
+    sex = const.SEX_MALE
+    height = 170
+    weight = 70
+    unit = const.UNIT_METRIC
+    activity_level = const.ACTIVITY_LEVEL_LOW
+    waist_size = 40
+    expectation = const.EXPECTATION_GAIN
+    protein_percent = 20
+    carb_percent = 55
+    fat_percent = 25
+    smith = PersonProfile(pid, name, age, sex, height, weight, unit, activity_level, waist_size, expectation,
+                          protein_percent, carb_percent, fat_percent)
+    nutrition_requirements = compute_nutritional_needs(smith)
+
 carbs, fat, protein = nutrition_requirements.carb_grams, nutrition_requirements.fat_grams / 4, \
                       nutrition_requirements.protein_grams
 
@@ -182,6 +201,31 @@ if st.button('Continue'):
     min_diff_recipe = min(recipe_nut_val, key=recipe_nut_val.get)
     print(min_diff_recipe)
     # display the recipe with the min difference in nutritional values
-    st.write(min_diff_recipe)
-    st.write(all_recipes_df[all_recipes_df['recipe.name'] == min_diff_recipe])
+    st.header(min_diff_recipe)
+    with st.container():
+        for i in all_recipes_df[all_recipes_df['recipe.name'] == min_diff_recipe]['recipe.method']:
+            for j in i[1:-1].split('\', \''):
+                st.write(j)
+    st.subheader('Nutritional values:')
+    for i in recipe_nutr_dict[min_diff_recipe]:
+        st.write(i + ': ' + str(recipe_nutr_dict[min_diff_recipe][i]))
+    st.subheader('Ingredients:')
+    query_get_ingredients = 'MATCH p = (recipe:Recipe)-[i:HAS_INGREDIENT]->(ing:Ingredient) \
+                WHERE recipe.name= $recipe\
+                return ing.name'
+    ingredients = (session.run(query_get_ingredients, recipe=min_diff_recipe))
+    list_ingredients = list(ingredients.data())
+    for i in list_ingredients:
+        st.write(i.get('ing.name'))
+    st.subheader('Substitutes:')
+    query_get_substitutes = 'MATCH p = (recipe:Recipe)-[i:HAS_INGREDIENT]->(ing:Ingredient)-[ci:HAS_CANONICAL_NAME]-\
+                (can_ing:CanonicalIngredient)-[s:HAS_SUBSTITUTE]->(sub:CanonicalIngredient) \
+                WHERE recipe.name= $recipe\
+                return ing.name,sub.name '
+    substitutes = (session.run(query_get_substitutes, recipe=min_diff_recipe))
+    list_substitutes = list(substitutes.data())
+    for i in list_substitutes:
+        st.write(i.get('ing.name') + ': ' + i.get('sub.name'))
 
+# todo: get substitutes for the selected ingredients
+# todo: add exception handling to remove error messages
