@@ -27,6 +27,8 @@ def parse_args():
                    help="Path to the data dir to be used.")
     p.add_argument("PORT", type=str,
                    help="Port used to connect to the database")
+    p.add_argument("--uri", type=str, default="bolt://localhost",
+                   help="URI to connect to the database on.")
     p.add_argument("--user", type=str, default="neo4j",
                    help="User to authenticate as for neo4j")
     p.add_argument("--password", type=str, default="password",
@@ -95,7 +97,7 @@ if __name__ == '__main__':
         elif user_input == "y":
             should_continue = True
 
-    uri = f"bolt://localhost:{args.PORT}"
+    uri = f"{args.uri}:{args.PORT}"
 
     print("Adding canonical ingredients to graph")
     add_ingredients_to_graph(data_dir, uri, args.user, args.password)
