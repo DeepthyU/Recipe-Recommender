@@ -22,3 +22,24 @@ Data preparation consists of 2 steps:
 ## Web Interface
 
 The web interface is started by running `UI.py` in the `src/web-app` directory.
+
+
+
+
+Source used in this project are:
+|                              | Source                                                                  |
+|--------------------------------------------------------------------------------------------------------|
+| Recipe source 1              | BBC Student Recipes collection [^1]                                     |
+| Recipe source 2              | The Student Food Project [^2]                                           |
+| Ingredient nutritional value | Kaggle dataset “Nutritional values for common foods and products”[^3]   |
+| Ingredient alternatives      | Work on food substitutions from Loesch et al. [^4]                      |
+| Nutritional requirements     | Weighing Success web calculator [^5]                                    |
+|--------------------------------------------------------------------------------------------------------|
+
+[^1]:https://www.bbcgoodfood.com/search?q=recipes
+[^2]:https://www.thestudentfoodproject.com/
+[^3]:https://www.kaggle.com/datasets/trolukovich/nutritional-values-for-common-foods-and-products
+[^4]:https://github.com/MaastrichtU-IDS/healthy-food-subs
+[^5]:https://www.weighing-success.com/NutritionalNeeds.html
+6
+
