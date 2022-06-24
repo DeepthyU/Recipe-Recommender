@@ -21,7 +21,7 @@ Data preparation consists of 2 steps:
 
 ## Web Interface
 
-The web interface is started by running `UI.py` in the `src/web-app` directory.
+The web interface is started by running `streamlit run UI.py` in the `src/web-app` directory.
 
 
 
